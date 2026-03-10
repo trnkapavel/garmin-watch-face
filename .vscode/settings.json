@@ -1,0 +1,26 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "command": true,
+        "monkeyc": true,
+        "brew": true,
+        "true": true,
+        "/^source ~/\\.zshrc && command -v monkeyc && monkeyc -v$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/usr/libexec/java_home": true,
+        "java": true,
+        "/opt/homebrew/opt/openjdk@21/bin/java": true,
+        "/^if ! grep -q 'openjdk@21/bin' ~/\\.zshrc; then cat <<'EOF' >> ~/\\.zshrc\n\n# Java for Garmin Connect IQ tools\nexport PATH=\"/opt/homebrew/opt/openjdk@21/bin:\\$PATH\"\nexport JAVA_HOME=\"/opt/homebrew/opt/openjdk@21/libexec/openjdk\\.jdk/Contents/Home\"\nEOF\nfi\nsource ~/\\.zshrc\njava -version\ncommand -v monkeyc\nmonkeyc -v$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^source ~/\\.zshrc && java -version && command -v monkeyc && monkeyc -v$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "mkdir": true,
+        "touch": true,
+        "openssl": true
+    }
+}
