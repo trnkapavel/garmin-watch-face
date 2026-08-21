@@ -1,3 +1,6 @@
 developer_key
 developer_key.pem
 bin/
+build/
+.DS_Store
+.serena/

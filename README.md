@@ -1,57 +1,47 @@
-# Garmin Watch Face (Connect IQ)
+# Watch face pro Epix Pro Gen 2 51mm (Connect IQ)
 
-Jednoduchy cifernik pro Garmin hodinky v Monkey C.
+Vlastní ciferník v Monkey C, designově vycházející z Apple Watch Ultra (ne kopie).
+Cílové zařízení: **`epix2pro51mm`** (454×454 AMOLED, API 5.2).
 
 ## Co zobrazuje
 
-- cas (12/24h podle nastaveni zarizeni)
-- datum
-- kroky
-- stav baterie
+- **Čas** velkými číslicemi s jemným gradientem, pod ním datum
+- **Vnější prstenec** = oblouk od východu do západu slunce, barva se mění podle denní doby;
+  na prstenci značky východu, západu a aktuálního času
+- **Hodinové ticky** po obvodu
+- **Čtyři gauge** (dvě nahoře, dvě dole): tep, kroky, baterie, …
+- **Podkladová křivka barometrického tlaku** za 12 h – jemně šedá, hodnotu nese tvar, ne číslo
 
-## Poznamky
+Poloha slunce se počítá vlastním NOAA algoritmem, ne z Weather API.
 
-- Projekt je pripraveny jako zaklad pro dalsi upravy designu.
-- Podporovane produkty jsou zatim: `fr245`, `venu`, `vivoactive4`.
-
-## Build a simulace
-
-1. Nainstaluj Connect IQ SDK (např. z [Garmin Developer](https://developer.garmin.com/connect-iq/sdk/)).
-2. Build (použij svůj klíč pro podpis):
+## Build
 
 ```bash
-monkeyc -f monkey.jungle -o bin/WatchFace.prg -d venu -y developer_key
+monkeyc -f monkey.jungle -o build/UltraSun.prg -y developer_key -d epix2pro51mm -r
 ```
 
-3. Spuštění simulátoru – vyber jeden způsob:
+`-r` = release build. Podpisový klíč `developer_key` je v `.gitignore` – **nikdy ho necommituj.**
 
-**A) Skript v projektu (doporučeno):**
+Vývojový build + simulátor:
+
 ```bash
-chmod +x run-simulator.sh
 ./run-simulator.sh
 ```
 
-**B) Přímo z SDK (cesta se může lišit podle verze):**
+## Nahrání do hodinek (sideload)
+
+Epix Pro se přes USB nehlásí jako disk – viz [`NOTES.md`](NOTES.md), sekce *Sideload*.
+Zkráceně: hodinky v režimu **MTP**, ukončit OpenMTP a spustit
+
 ```bash
-open -a "$HOME/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-8.4.1-2026-02-03-e9f77eeaa/bin/ConnectIQ.app"
+clang -o tools/mtpput tools/mtpput.c \
+  -I/opt/homebrew/opt/libmtp/include -L/opt/homebrew/opt/libmtp/lib -lmtp
+tools/mtpput build/UltraSun.prg UltraSun.prg <parent_id složky Apps>
 ```
 
-**C) Build a hned spustit v simulátoru (monkeydo):**
-```bash
-monkeydo bin/WatchFace.prg venu
-```
-*(Potřebuješ mít `monkeydo` v PATH – přidej složku `bin` SDK.)*
+`parent_id` zjistíš přes `mtp-folders`.
 
-4. V simulátoru: **File → Open** (nebo přetáhni) a vyber `bin/WatchFace.prg`.
+## Dokumentace
 
----
-
-### Simulátor se nespustí
-
-- **„The executable is missing“** – App ze SDK někdy na Macu selhává. Zkus spustit přímo binárku:
-  ```bash
-  "$HOME/Library/Application Support/Garmin/ConnectIQ/Sdks/connectiq-sdk-mac-8.4.1-2026-02-03-e9f77eeaa/bin/ConnectIQ.app/Contents/MacOS/simulator"
-  ```
-- **Java** – Simulátor potřebuje Javu. Nainstaluj např. OpenJDK 17+ a nastav `JAVA_HOME`.
-- **Zkus jinou verzi SDK** – v `~/Library/Application Support/Garmin/ConnectIQ/Sdks/` můžeš mít více verzí; v příkazech změň cestu na starší (např. `connectiq-sdk-mac-8.4.0-...`).
-- **VS Code** – rozšíření „Monkey C“ umí build a spuštění simulátoru (F5).
+- [`NOTES.md`](NOTES.md) – co jsme se při vývoji naučili (geometrie, AOD limity, pasti, sideload)
+- [`garmin_rules.md`](garmin_rules.md) – referenční pravidla Connect IQ / Monkey C
