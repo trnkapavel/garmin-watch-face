@@ -29,6 +29,9 @@ class GarminWatchFaceView extends WatchUi.WatchFace {
     const TRACK = 0x2A2A2A;      // podklad kroužku
     const GAUGE_R = 32;
     const GAUGE_STROKE = 4;
+    const GAUGE_MARKER = 5;    // délka trojúhelníkového ukazatele na obvodu
+    const HATCH_SPACING = 6;
+    const HATCH_COLOR = 0x161616;   // šrafování musí být sotva znatelné, jinak přebije ciferník
     const HR_MIN = 40;           // rozsah pro kroužek tepu
     const HR_MAX = 180;
     const CALORIE_GOAL = 2500;
@@ -101,6 +104,7 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
         var dateInfo = Gregorian.info(now, Time.FORMAT_MEDIUM);
         _updateSun(now, dateInfo);
 
+        _drawHatching(dc, w, h, aod);
         _drawSunRing(dc, cx, cy, nowMin, aod);
         _drawHourTicks(dc, cx, cy, aod);
         _drawSunMarkers(dc, cx, cy, aod);
@@ -132,6 +136,20 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
 
         _drawGauges(dc, cx, 76, topGaugeCY, botGaugeCY, aod);
         _drawPressureGraph(dc, cx, cy, topGaugeCY + GAUGE_R + 4, aod);
+    }
+
+    // Jemné diagonální šrafování pozadí (inspirace analogovými MARQ ciferníky) —
+    // kreslí se přes celé plátno, kruhový displej zbytek stejně ořízne. V AOD se
+    // vynechává, jde jen o dekoraci a nesmí sahat na rozpočet svítících pixelů.
+    function _drawHatching(dc as Dc, w as Number, h as Number, aod as Boolean) as Void {
+        if (aod) { return; }
+        dc.setPenWidth(1);
+        dc.setColor(HATCH_COLOR, Graphics.COLOR_TRANSPARENT);
+        var i = -h;
+        while (i < w) {
+            dc.drawLine(i, 0, i + h, h);
+            i += HATCH_SPACING;
+        }
     }
 
     // Hodiny mají svislý zlatý přechod, minuty jsou duté. Monkey C neumí ani jedno,
@@ -312,18 +330,18 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
         var hr = _latestHeartRate();
 
         _drawGauge(dc, cx - dx, topCY, aod, battery < 20 ? ORANGE : BAT_GREEN,
-            battery / 100.0, battery.format("%d") + "%");
+            battery / 100.0, battery.format("%d") + "%", :battery);
         _drawGauge(dc, cx + dx, topCY, aod, HR_RED,
             hr == null ? 0.0 : (hr - HR_MIN).toFloat() / (HR_MAX - HR_MIN),
-            hr == null ? "--" : hr.format("%d"));
+            hr == null ? "--" : hr.format("%d"), :heart);
         _drawGauge(dc, cx - dx, botCY, aod, Graphics.COLOR_WHITE,
-            steps.toFloat() / stepGoal, _shortNum(steps));
+            steps.toFloat() / stepGoal, _shortNum(steps), :steps);
         _drawGauge(dc, cx + dx, botCY, aod, ORANGE,
-            cals.toFloat() / CALORIE_GOAL, _shortNum(cals));
+            cals.toFloat() / CALORIE_GOAL, _shortNum(cals), :flame);
     }
 
     function _drawGauge(dc as Dc, x as Number, y as Number, aod as Boolean,
-            color as Number, progress as Float, value as String) as Void {
+            color as Number, progress as Float, value as String, icon as Symbol) as Void {
         // Track je vlásečnice pod silnějším obloukem – dá kroužku hloubku.
         if (!aod) {
             dc.setPenWidth(2);
@@ -340,18 +358,64 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
             dc.setColor(aod ? _dim(color) : color, Graphics.COLOR_TRANSPARENT);
             dc.drawArc(x, y, GAUGE_R, Graphics.ARC_CLOCKWISE, 90.0, end);
 
-            // Kulatý hrot na konci oblouku.
-            var a = end * Math.PI / 180.0;
-            dc.fillCircle((x + Math.cos(a) * GAUGE_R).toNumber(),
-                (y - Math.sin(a) * GAUGE_R).toNumber(), GAUGE_STROKE / 2);
+            // Trojúhelníkový ukazatel na obvodu místo kulatého hrotu — styl
+            // komplikací na analogových MARQ ciferníkách.
+            _drawGaugeMarker(dc, x, y, end);
         }
         dc.setPenWidth(1);
 
         // V AOD zůstává jen oblouk – naměřená čísla se nezobrazují.
         if (!aod) {
+            _drawIcon(dc, x, y - 10, icon);
             dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(x, y, Graphics.FONT_XTINY, value,
+            dc.drawText(x, y + 7, Graphics.FONT_XTINY, value,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        }
+    }
+
+    // Radiální trojúhelník na obvodu kroužku — hrot směřuje ven, základna
+    // vevnitř, jako ručičkový ukazatel aktuální hodnoty na komplikaci.
+    function _drawGaugeMarker(dc as Dc, x as Number, y as Number, angleDeg as Float) as Void {
+        var a = angleDeg * Math.PI / 180.0;
+        var halfDeg = (GAUGE_MARKER.toFloat() / GAUGE_R) * (180.0 / Math.PI);
+        var a1 = (angleDeg + halfDeg) * Math.PI / 180.0;
+        var a2 = (angleDeg - halfDeg) * Math.PI / 180.0;
+        var rOuter = GAUGE_R + GAUGE_MARKER;
+        var rInner = GAUGE_R - GAUGE_MARKER;
+
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+        dc.fillPolygon([
+            [(x + Math.cos(a) * rOuter).toNumber(), (y - Math.sin(a) * rOuter).toNumber()],
+            [(x + Math.cos(a1) * rInner).toNumber(), (y - Math.sin(a1) * rInner).toNumber()],
+            [(x + Math.cos(a2) * rInner).toNumber(), (y - Math.sin(a2) * rInner).toNumber()]
+        ] as Array<[Numeric, Numeric]>);
+    }
+
+    // Drobné vektorové ikony uprostřed komplikace, nad textovou hodnotou.
+    // Kreslené jen z primitiv dc (bez bitmap) — žádné křivky, jen polygony a kruhy.
+    function _drawIcon(dc as Dc, cx as Number, cy as Number, icon as Symbol) as Void {
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+        if (icon == :battery) {
+            dc.setPenWidth(1);
+            dc.drawRectangle(cx - 5, cy - 5, 10, 11);
+            dc.fillRectangle(cx - 2, cy - 7, 4, 2);
+        } else if (icon == :heart) {
+            dc.fillPolygon([
+                [cx, cy - 2], [cx - 3, cy - 6], [cx - 6, cy - 3], [cx - 6, cy],
+                [cx, cy + 6], [cx + 6, cy], [cx + 6, cy - 3], [cx + 3, cy - 6]
+            ] as Array<[Numeric, Numeric]>);
+        } else if (icon == :steps) {
+            // Chodidlo: pata + planta + tři prsty, jinak nejde od plamene rozeznat.
+            dc.fillCircle(cx, cy + 4, 3);
+            dc.fillCircle(cx, cy, 4);
+            dc.fillCircle(cx - 3, cy - 6, 1);
+            dc.fillCircle(cx, cy - 7, 1);
+            dc.fillCircle(cx + 3, cy - 6, 1);
+        } else if (icon == :flame) {
+            dc.fillPolygon([
+                [cx, cy - 7], [cx + 3, cy - 2], [cx + 4, cy + 3], [cx, cy + 7],
+                [cx - 4, cy + 3], [cx - 3, cy - 2]
+            ] as Array<[Numeric, Numeric]>);
         }
     }
 
