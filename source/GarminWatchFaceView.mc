@@ -30,8 +30,8 @@ class GarminWatchFaceView extends WatchUi.WatchFace {
     const GAUGE_R = 32;
     const GAUGE_STROKE = 4;
     const GAUGE_MARKER = 5;    // délka trojúhelníkového ukazatele na obvodu
-    const HATCH_SPACING = 6;
-    const HATCH_COLOR = 0x161616;   // šrafování musí být sotva znatelné, jinak přebije ciferník
+    const HATCH_SPACING = 5;
+    const HATCH_COLOR = 0x4D4D4D;   // dost světlé, aby bylo v reálu vidět, ne jen v datech pixelu
     const HR_MIN = 40;           // rozsah pro kroužek tepu
     const HR_MAX = 180;
     const CALORIE_GOAL = 2500;
@@ -40,7 +40,7 @@ class GarminWatchFaceView extends WatchUi.WatchFace {
     const GOLD_TOP = 0xFFDD88;   // přechod na hodinách: shora dolů
     const GOLD_BOT = 0xFF8800;
     const OUTLINE = 2;           // tloušťka obrysu minut
-    const GRAPH_GRAY = 0x4A4A4A;   // podkladová křivka tlaku
+    const GRAPH_GRAY = 0x7FA8CC;   // podkladová křivka tlaku – odlišená modrošedá, ať nezaniká v šrafování
 const GRAPH_H = 32;
 const GRAPH_MIN_SPAN = 120.0;  // minimální rozpětí 1,2 hPa – pod tím už kreslíme jen šum senzoru
 const GRAPH_MAX_SAMPLES = 96;
@@ -351,17 +351,19 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
 
         var filled = progress;
         if (filled > 0.999) { filled = 0.999; }
+        var end = 90.0;   // výchozí pozice ukazatele při nulové hodnotě (vršek kroužku)
         if (filled > 0.0) {
-            var end = 90.0 - 360.0 * filled;
+            end = 90.0 - 360.0 * filled;
             while (end < 0.0) { end += 360.0; }
             dc.setPenWidth(GAUGE_STROKE);
             dc.setColor(aod ? _dim(color) : color, Graphics.COLOR_TRANSPARENT);
             dc.drawArc(x, y, GAUGE_R, Graphics.ARC_CLOCKWISE, 90.0, end);
-
-            // Trojúhelníkový ukazatel na obvodu místo kulatého hrotu — styl
-            // komplikací na analogových MARQ ciferníkách.
-            _drawGaugeMarker(dc, x, y, end);
         }
+
+        // Trojúhelníkový ukazatel na obvodu místo kulatého hrotu — styl komplikací
+        // na analogových MARQ ciferníkách. Kreslí se vždy, i při nulové hodnotě,
+        // ať kroužek nepůsobí rozbitě/mrtvě.
+        _drawGaugeMarker(dc, x, y, end, aod);
         dc.setPenWidth(1);
 
         // V AOD zůstává jen oblouk – naměřená čísla se nezobrazují.
@@ -375,7 +377,8 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
 
     // Radiální trojúhelník na obvodu kroužku — hrot směřuje ven, základna
     // vevnitř, jako ručičkový ukazatel aktuální hodnoty na komplikaci.
-    function _drawGaugeMarker(dc as Dc, x as Number, y as Number, angleDeg as Float) as Void {
+    function _drawGaugeMarker(dc as Dc, x as Number, y as Number, angleDeg as Float,
+            aod as Boolean) as Void {
         var a = angleDeg * Math.PI / 180.0;
         var halfDeg = (GAUGE_MARKER.toFloat() / GAUGE_R) * (180.0 / Math.PI);
         var a1 = (angleDeg + halfDeg) * Math.PI / 180.0;
@@ -383,7 +386,7 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
         var rOuter = GAUGE_R + GAUGE_MARKER;
         var rInner = GAUGE_R - GAUGE_MARKER;
 
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+        dc.setColor(aod ? _dim(AOD_GRAY) : Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         dc.fillPolygon([
             [(x + Math.cos(a) * rOuter).toNumber(), (y - Math.sin(a) * rOuter).toNumber()],
             [(x + Math.cos(a1) * rInner).toNumber(), (y - Math.sin(a1) * rInner).toNumber()],
@@ -422,6 +425,15 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
     // Poslední vzorek z historie – nebudí optický senzor
     // Podkladová křivka barometrického trendu za 12 h. Šedá tak, aby působila jako
     // textura pozadí – hodnotu nese tvar křivky, ne číslo.
+    // Malý tlakoměr (kruh + ručička) vedle křivky — bez něj nešlo poznat,
+    // co ta šedá čára na pozadí vůbec znázorňuje.
+    function _drawBarometerIcon(dc as Dc, cx as Number, cy as Number) as Void {
+        dc.setPenWidth(2);
+        dc.setColor(GRAPH_GRAY, Graphics.COLOR_TRANSPARENT);
+        dc.drawCircle(cx, cy, 7);
+        dc.drawLine(cx, cy, cx + 4, cy - 5);
+    }
+
     function _drawPressureGraph(dc as Dc, cx as Number, cy as Number, top as Number,
             aod as Boolean) as Void {
         if (aod) { return; }
@@ -436,6 +448,10 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
         if (limit <= 0) { return; }
         var halfW = Math.sqrt(limit.toFloat()).toNumber() - 6;
         if (halfW < 40) { return; }
+        var iconSpace = 16;   // místo pro ikonu barometru vlevo od křivky
+        var curveHalfW = halfW - iconSpace;
+
+        _drawBarometerIcon(dc, cx - halfW + 4, top + GRAPH_H / 2);
 
         var lo = samples[0];
         var hi = samples[0];
@@ -450,14 +466,15 @@ const AOD_LEVEL = 0.6;       // ztlumení barev v AOD   // světle šedá dle Ga
             span = GRAPH_MIN_SPAN;
         }
 
-        dc.setPenWidth(3);
+        dc.setPenWidth(4);
         dc.setColor(GRAPH_GRAY, Graphics.COLOR_TRANSPARENT);
         // vzorky jdou od nejnovějšího, takže je kreslíme zprava doleva
         var n = samples.size();
         var x1 = cx + halfW;
         var y1 = top + GRAPH_H - ((samples[0] - lo) / span * GRAPH_H).toNumber();
+        dc.fillCircle(x1, y1, 3);
         for (var i = 1; i < n; i += 1) {
-            var x0 = cx + halfW - (2 * halfW * i) / (n - 1);
+            var x0 = cx + halfW - (2 * curveHalfW * i) / (n - 1);
             var y0 = top + GRAPH_H - ((samples[i] - lo) / span * GRAPH_H).toNumber();
             dc.drawLine(x0, y0, x1, y1);
             x1 = x0;
